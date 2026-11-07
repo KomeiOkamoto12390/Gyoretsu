@@ -1,0 +1,64 @@
+{
+  "config": {
+    "reps": 10000,
+    "customers": 20000,
+    "warmup": 2000,
+    "rho": 0.9,
+    "chunk": 2500,
+    "workers": 12,
+    "simpy_reps": null,
+    "simpy_single_reps": 60,
+    "skip_simpy": false,
+    "out": "benchmarks/results"
+  },
+  "theory_wq": 8.100000000000003,
+  "theory_grad": [
+    -81.00000000000004,
+    99.00000000000006
+  ],
+  "machine": {
+    "platform": "Linux-6.18.54.1-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+    "cpus": 12,
+    "jax": "0.12.0.1"
+  },
+  "results": {
+    "simpy": {
+      "mean_wait": 8.108169210202817,
+      "ci95": 0.02494292415782379,
+      "forward_s": 287.349067309,
+      "measured_s": 287.349067309,
+      "reps_run": 10000,
+      "workers": 12,
+      "grad_fd_s": 1149.396269236
+    },
+    "simpy_1core": {
+      "measured_s": 7.0251858110000285,
+      "reps_run": 60,
+      "forward_s": 1170.8643018333382
+    },
+    "gyoretsu_gpu": {
+      "mean_wait": 8.093875885009766,
+      "ci95": 0.024350082501769066,
+      "forward_s": 0.19382438399998136,
+      "grad_s": 0.2521788330000163,
+      "compile_s": 11.181982601000072,
+      "grad": [
+        -80.81617736816406,
+        98.7889404296875
+      ],
+      "device": "cuda:0"
+    },
+    "gyoretsu_cpu": {
+      "mean_wait": 8.093875885009766,
+      "ci95": 0.024350082501769066,
+      "forward_s": 5.063705857999594,
+      "grad_s": 6.6254762409998875,
+      "compile_s": 7.360006091000287,
+      "grad": [
+        -80.81616973876953,
+        98.78893280029297
+      ],
+      "device": "cpu:0"
+    }
+  }
+}

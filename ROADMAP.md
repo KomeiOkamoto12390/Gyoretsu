@@ -31,7 +31,14 @@ confirmed at kickoff.
 - [ ] Tandem line via the departure recursion `D[k,n] = max(D[k-1,n], D[k,n-1]) + S[k,n]`
 - [x] GPU runs in WSL2 (RTX 4050, 6 GB). Scan unroll=32 is required: 10,000 reps × 5,000
       customers takes ~16–38 ms on GPU vs ~1,250 ms on CPU (unroll=1 on GPU: ~940 ms)
-- [ ] GPU timing vs SimPy (10,000 replications), as a committed benchmark script
+- [x] GPU timing vs SimPy (`benchmarks/simpy_vs_gyoretsu.py`, results in `benchmarks/results/`).
+      M/M/1, rho = 0.9, 10,000 reps × 20,000 customers (200M): SimPy 287 s on 12 cores,
+      Gyoretsu 0.19 s forward / 0.25 s gradient on GPU (1,483x faster than 12-core SimPy, ~6,000x
+      faster than single-core SimPy, which is extrapolated from 60 reps). At 1B customers:
+      SimPy 1,366 s, Gyoretsu 3.75 s. All estimates agree with theory within their 95% CIs.
+      Caveat: this compares a specialized recursion with a general process-based simulator.
+- [ ] Larger GPU chunks for long paths (the 1B run used 500-rep chunks and was latency-bound
+      at ~270M customers/s, versus ~1,000M/s with 2,500-rep chunks)
 - [ ] Reproduce a benchmark from Che, Dong & Namkoong (2024)
 
 ## Design findings
