@@ -1,13 +1,23 @@
 """Vectorized event engine.
 
-Phase 0 implements the single-server FIFO queue through the Lindley recursion
+Single server (G/G/1): the Lindley recursion
 
     W[0] = 0,    W[n+1] = max(0, W[n] + S[n] - A[n+1])
 
 where ``W`` is the wait in queue, ``S`` the service time and ``A[n]`` the gap between
-arrivals ``n-1`` and ``n``. Each replication is one ``lax.scan``; replications are
-batched with ``vmap``. In exact mode, reverse-mode autodiff through this recursion
-reproduces the classic IPA estimator.
+arrivals ``n-1`` and ``n``.
+
+Multiple identical servers (G/G/c, FIFO): the Kiefer-Wolfowitz recursion on the sorted
+vector ``V`` of remaining workload per server,
+
+    W[n] = V[n][0],    V[n+1] = sort(max(0, V[n] + S[n] e_0 - A[n+1])).
+
+Customer ``n`` joins the least-loaded server. Because servers are identical, ties in the
+sort are harmless (permuting equal entries leaves ``V`` unchanged), so the sample path is
+continuous in the parameters and exact autodiff gives pathwise (IPA) gradients without
+any smoothing of the server choice.
+
+Each replication is one ``lax.scan``; replications are batched with ``vmap``.
 """
 
 from __future__ import annotations
@@ -84,6 +94,70 @@ def lindley(
     return jnp.concatenate([w0[None], ws])
 
 
+def kiefer_wolfowitz(
+    interarrivals: Array,
+    services: Array,
+    servers: int,
+    tau: ArrayLike = 0.0,
+    *,
+    straight_through: bool = False,
+    unroll: int = DEFAULT_UNROLL,
+) -> Array:
+    """Waits in queue for one replication of a FIFO queue with ``servers`` identical servers.
+
+    Same conventions as :func:`lindley`, which it reduces to when ``servers == 1``.
+    ``servers`` must be a Python int. Cost per customer is a sort of ``servers`` values.
+    """
+    if not isinstance(servers, int) or servers < 1:
+        raise ValueError(f"servers must be a positive Python int, got {servers!r}")
+    v0 = jnp.zeros((servers,), dtype=services.dtype)
+    # Gap to the *next* arrival; the last customer's is unused.
+    gaps = jnp.concatenate([interarrivals[1:], jnp.zeros((1,), interarrivals.dtype)])
+
+    def step(v: Array, x: tuple[Array, Array]) -> tuple[Array, Array]:
+        s, a_next = x
+        w = v[0]
+        v = jnp.sort(v.at[0].add(s))
+        v = smooth_relu(v - a_next, tau, straight_through=straight_through)
+        return v, w
+
+    _, ws = jax.lax.scan(step, v0, (services, gaps), unroll=unroll)
+    return ws
+
+
+def simulate_ggc(
+    key: Array,
+    interarrival: Distribution,
+    service: Distribution,
+    *,
+    servers: int,
+    n_customers: int,
+    replications: int = 1,
+    tau: ArrayLike = 0.0,
+    straight_through: bool = False,
+    unroll: int = DEFAULT_UNROLL,
+) -> QueueSample:
+    """Simulate ``replications`` independent runs of a G/G/c FIFO queue.
+
+    Reusing ``key`` across parameter values gives common random numbers, so differences
+    and finite-difference gradients have low variance. ``servers == 1`` uses the Lindley
+    recursion, which is cheaper.
+    """
+    if n_customers < 2:
+        raise ValueError("n_customers must be at least 2")
+    k_arr, k_svc = jax.random.split(key)
+    size = (replications, n_customers)
+    a = interarrival.sample(k_arr, size)
+    s = service.sample(k_svc, size)
+    opts = dict(tau=tau, straight_through=straight_through, unroll=unroll)
+    if servers == 1:
+        sim = partial(lindley, **opts)
+    else:
+        sim = partial(kiefer_wolfowitz, servers=servers, **opts)
+    w = jax.vmap(sim)(a, s)
+    return QueueSample(interarrivals=a, services=s, waits=w)
+
+
 def simulate_gg1(
     key: Array,
     interarrival: Distribution,
@@ -95,17 +169,15 @@ def simulate_gg1(
     straight_through: bool = False,
     unroll: int = DEFAULT_UNROLL,
 ) -> QueueSample:
-    """Simulate ``replications`` independent runs of a G/G/1 FIFO queue.
-
-    Reusing ``key`` across parameter values gives common random numbers, so differences
-    and finite-difference gradients have low variance.
-    """
-    if n_customers < 2:
-        raise ValueError("n_customers must be at least 2")
-    k_arr, k_svc = jax.random.split(key)
-    size = (replications, n_customers)
-    a = interarrival.sample(k_arr, size)
-    s = service.sample(k_svc, size)
-    sim = partial(lindley, tau=tau, straight_through=straight_through, unroll=unroll)
-    w = jax.vmap(sim)(a, s)
-    return QueueSample(interarrivals=a, services=s, waits=w)
+    """Simulate ``replications`` independent runs of a G/G/1 FIFO queue."""
+    return simulate_ggc(
+        key,
+        interarrival,
+        service,
+        servers=1,
+        n_customers=n_customers,
+        replications=replications,
+        tau=tau,
+        straight_through=straight_through,
+        unroll=unroll,
+    )

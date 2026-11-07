@@ -21,13 +21,35 @@ confirmed at kickoff.
 - [x] Pathwise gradient matches finite differences (cosine ≥ 0.95)
 - [x] Autodiff reproduces hand-written IPA
 - [x] Smoothing bias shrinks monotonically as tau → 0
-- [ ] Multi-server queue (M/M/c): event ordering is where smoothing becomes necessary
+- [x] Multi-server FIFO queue (G/G/c) via the sorted Kiefer–Wolfowitz workload recursion:
+      waits match SimPy exactly (c = 2, 3, 5), steady state matches Erlang C (c = 2, 4, 8),
+      gradients match the Erlang C derivative and finite differences (`tests/test_mmc.py`)
+- [ ] Continuous relaxation of the server count `c` (needed for staffing optimization)
+- [ ] First model with genuine event-order discontinuities (priorities, heterogeneous
+      servers, probabilistic routing or blocking): this is where smoothing is actually needed
 - [ ] Heavy-traffic stress test (rho → 1): gradient variance vs batch size
 - [ ] Tandem line via the departure recursion `D[k,n] = max(D[k-1,n], D[k,n-1]) + S[k,n]`
 - [x] GPU runs in WSL2 (RTX 4050, 6 GB). Scan unroll=32 is required: 10,000 reps × 5,000
       customers takes ~16–38 ms on GPU vs ~1,250 ms on CPU (unroll=1 on GPU: ~940 ms)
 - [ ] GPU timing vs SimPy (10,000 replications), as a committed benchmark script
 - [ ] Reproduce a benchmark from Che, Dong & Namkoong (2024)
+
+## Design findings
+
+**Soft-min server selection is biased when resources tie (2026-11-07).** The proposal
+smooths next-event selection by replacing the hard minimum with a soft-min. Idle identical
+servers all have exactly zero remaining work, so a soft choice splits each new job evenly
+across them. That bias does not vanish as tau → 0. On M/M/3 at rho = 0.7 the naive
+version converges to a mean wait of 1.648 against an exact 1.158 (+42%). Smoothing the
+sorted workload recursion converges correctly (1.1576 at tau = 1e-3). Rule: exchangeable
+resources are represented as sorted vectors, never as a soft choice among tied candidates.
+Soft-min applies only where the candidates are distinguishable.
+
+**Single-server and identical-multi-server FIFO queues need no smoothing for gradients.**
+Their sample paths are continuous in the parameters, so exact autodiff already gives
+unbiased pathwise (IPA) gradients. Gate 0 therefore validates the engine and gradient
+machinery. The smoothing layer gets its real test in the first model with event-order
+discontinuities.
 
 ## Success criteria (by Dec 2027)
 

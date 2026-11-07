@@ -7,7 +7,7 @@ closed-form queueing results used for validation.
 
 from gyoretsu import dist, grad, smooth, stats, theory
 from gyoretsu.dist import Deterministic, Exponential, Gamma, LogNormal
-from gyoretsu.engine import QueueSample, lindley, simulate_gg1
+from gyoretsu.engine import QueueSample, kiefer_wolfowitz, lindley, simulate_gg1, simulate_ggc
 
 __version__ = "0.0.1"
 
@@ -19,8 +19,10 @@ __all__ = [
     "QueueSample",
     "dist",
     "grad",
+    "kiefer_wolfowitz",
     "lindley",
     "simulate_gg1",
+    "simulate_ggc",
     "smooth",
     "stats",
     "theory",
