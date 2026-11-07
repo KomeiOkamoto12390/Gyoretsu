@@ -1,0 +1,47 @@
+[build-system]
+requires = ["hatchling>=1.24"]
+build-backend = "hatchling.build"
+
+[project]
+name = "gyoretsu"
+version = "0.0.1"
+description = "Differentiable discrete-event simulation in JAX: simulate, differentiate, optimize and calibrate queueing models."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Komei Okamoto" }]
+requires-python = ">=3.10"
+dependencies = [
+    "jax>=0.4.30",
+    "numpy>=1.24",
+]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering",
+]
+
+[project.optional-dependencies]
+# CUDA wheels are published for Linux (and WSL2) only.
+gpu = ["jax[cuda12]>=0.4.30"]
+dev = [
+    "pytest>=8",
+    "ruff>=0.5",
+    "simpy>=4.1",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/gyoretsu"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "NPY"]
