@@ -6,7 +6,7 @@ confirmed at kickoff.
 
 | Phase | Target | Gate criterion | Status |
 |---|---|---|---|
-| 0. Prototype | Nov–Dec 2026 | Pathwise gradients of a single-server queue agree with finite differences. If not, narrow scope to GPU forward simulation plus classic IPA. | In progress; criterion met on M/M/1 (`tests/test_gate0_gradients.py`) |
+| 0. Prototype | Nov–Dec 2026 | Pathwise gradients of a single-server queue agree with finite differences. If not, narrow scope to GPU forward simulation plus classic IPA. | **At risk.** Met on FIFO queues (M/M/1, M/M/c), but pathwise gradients **fail** on the two-class priority queue, the first model with event-order swaps (see Design findings). Next: the event-race formulation of Che et al. before any scope decision. |
 | 1. v0.1 alpha | ~Q1 2027 | Forward results match queueing theory; tandem lines and networks run batched on GPU | |
 | 2. v0.5 beta | ~Q2 2027 | Gradient search beats brute force on the staffing study within 10% of its budget; calibration recovers synthetic parameters | |
 | 3. Feature freeze | ~Q3 2027 | Quantum module agrees with SeQUeNCe on small repeater chains | |
@@ -25,8 +25,13 @@ confirmed at kickoff.
       waits match SimPy exactly (c = 2, 3, 5), steady state matches Erlang C (c = 2, 4, 8),
       gradients match the Erlang C derivative and finite differences (`tests/test_mmc.py`)
 - [ ] Continuous relaxation of the server count `c` (needed for staffing optimization)
-- [ ] First model with genuine event-order discontinuities (priorities, heterogeneous
-      servers, probabilistic routing or blocking): this is where smoothing is actually needed
+- [x] First model with event-order discontinuities: two-class non-preemptive priority
+      queue (`gyoretsu/priority.py`). Forward path matches SimPy `PriorityResource` exactly
+      and Cobham's formula in steady state. **Pathwise gradients fail** (below).
+- [ ] Event-race formulation (Che, Dong & Namkoong): queue-length state, fresh
+      exponential clocks per event, soft-min over competing clocks. Re-run
+      `benchmarks/priority_gradient_study.py` against it. This decides the gate.
+- [ ] Likelihood-ratio (score-function) estimator as the fallback for event-order models
 - [ ] Heavy-traffic stress test (rho → 1): gradient variance vs batch size
 - [ ] Tandem line via the departure recursion `D[k,n] = max(D[k-1,n], D[k,n-1]) + S[k,n]`
 - [x] GPU runs in WSL2 (RTX 4050, 6 GB). Scan unroll=32 is required: 10,000 reps × 5,000
@@ -57,6 +62,36 @@ Their sample paths are continuous in the parameters, so exact autodiff already g
 unbiased pathwise (IPA) gradients. Gate 0 therefore validates the engine and gradient
 machinery. The smoothing layer gets its real test in the first model with event-order
 discontinuities.
+
+**Pathwise gradients fail on the priority queue in the arrival-time formulation
+(2026-11-07).** Two-class M/M/1 non-preemptive priority, rho = 0.3 + 0.4, 2,048 reps ×
+5,000 customers on GPU (`benchmarks/results/priority_gradient_study_*.json`). Forward
+waits 1.0008 / 3.3343 vs Cobham 1.000 / 3.333. Relative error of the 2×4 Jacobian of
+class waits w.r.t. [a0, a1, s0, s1]:
+
+| Estimator | Rel. error | Notes |
+|---|---|---|
+| CRN finite differences | 0.005 | correct, 0.4 s on GPU for 4 parameters |
+| Exact autodiff (tau = 0) | 83 | e.g. dW0/da0 = −472 vs true −0.257 |
+| Straight-through, tau = 1 | 149 | |
+| Straight-through, tau ≤ 0.3 | 2,000 to 5,000,000 | variance explodes as tau shrinks |
+
+Two mechanisms. (1) *Divergence:* arrival times are cumulative sums, so a change in a mean
+interarrival time moves customer n by about n times as much. With the service order frozen,
+the two streams drift apart without bound. Exact-mode dW0/da0 doubles with every doubling of
+the horizon (−48, −96, −189, −379, −755 for n = 500 … 8,000). (2) *Bias:* service-time
+gradients converge, but to the wrong value (dW0/ds0 ≈ 4.4 vs 1.29), because the jump term at
+order swaps is missing. Straight-through smoothing does not repair either one: chaining
+sigmoid-weighted state through thousands of steps compounds the gradients until they
+explode.
+
+Implication: in this formulation, the proposal's smoothing layer does not deliver gradients
+for models with priorities. Two things must be tried before the gate decision: the
+event-race formulation, which re-draws memoryless clocks at every event so perturbations
+do not accumulate (this is the formulation in which Che et al. report results), and
+likelihood-ratio estimators. If both fail, the proposal's fallback applies: GPU forward
+simulation plus classic estimators. CRN finite differences on GPU already work well for a
+handful of parameters.
 
 ## Success criteria (by Dec 2027)
 

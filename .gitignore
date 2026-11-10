@@ -14,3 +14,20 @@ htmlcov/
 data/private/
 # Editor settings are per-user.
 .vscode/
+# AI assistant instructions and local settings are per-user.
+CLAUDE.md
+CLAUDE.local.md
+.claude/
+# Secrets and local environment.
+.env
+.env.*
+*.pem
+*.key
+# Other editors and OS clutter.
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+# Tool caches.
+.mypy_cache/
+.jax_cache/

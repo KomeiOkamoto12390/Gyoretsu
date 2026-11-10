@@ -62,3 +62,28 @@ def mmc_wait(a: ArrayLike, s: ArrayLike, servers: int) -> Array:
     a, s = jnp.asarray(a), jnp.asarray(s)
     load = s / a
     return erlang_c(servers, load) * s / (servers - load)
+
+
+def priority_waits(
+    a: tuple[ArrayLike, ...], s: tuple[ArrayLike, ...], scv: tuple[ArrayLike, ...] | None = None
+) -> Array:
+    """Cobham's formula: mean wait per class in an M/G/1 non-preemptive priority queue.
+
+    Class 0 has the highest priority. ``a[k]``, ``s[k]`` and ``scv[k]`` are class ``k``'s
+    mean interarrival time, mean service time and squared coefficient of variation of
+    service (default 1, exponential). With ``sigma_k = rho_0 + ... + rho_k`` and residual
+    work ``W0 = sum_i lambda_i E[S_i^2] / 2``:
+
+        W_k = W0 / ((1 - sigma_{k-1}) (1 - sigma_k)).
+    """
+    a = [jnp.asarray(x) for x in a]
+    s = [jnp.asarray(x) for x in s]
+    scv = [jnp.asarray(1.0)] * len(s) if scv is None else [jnp.asarray(x) for x in scv]
+    rho = [si / ai for ai, si in zip(a, s, strict=True)]
+    w0 = sum(si**2 * (1.0 + ci) / (2.0 * ai) for ai, si, ci in zip(a, s, scv, strict=True))
+    out, sigma_prev = [], 0.0
+    for r in rho:
+        sigma = sigma_prev + r
+        out.append(w0 / ((1.0 - sigma_prev) * (1.0 - sigma)))
+        sigma_prev = sigma
+    return jnp.stack(out)

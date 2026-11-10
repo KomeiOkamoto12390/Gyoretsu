@@ -34,9 +34,17 @@ from gyoretsu.dist import Distribution
 from gyoretsu.smooth import smooth_relu
 
 # Event steps fused per scan iteration. Sequential event loops are launch-latency bound on
-# GPU; unrolling 32 steps made 10k replications ~60x faster on an RTX 4050 (Nov 2026) and
-# leaves CPU speed unchanged. Larger values mainly increase compile time.
-DEFAULT_UNROLL = 32
+# GPU; unrolling 32 steps made 10k replications ~60x faster on an RTX 4050 (Nov 2026). On
+# CPU it gives no speedup and multiplies compile time (~20 s per priority-queue compile), so
+# the default depends on the backend.
+GPU_UNROLL = 32
+
+
+def resolve_unroll(unroll: int | None) -> int:
+    """``unroll`` if given, else 32 on GPU and 1 elsewhere."""
+    if unroll is not None:
+        return unroll
+    return GPU_UNROLL if jax.default_backend() == "gpu" else 1
 
 
 class QueueSample(NamedTuple):
@@ -71,7 +79,7 @@ def lindley(
     tau: ArrayLike = 0.0,
     *,
     straight_through: bool = False,
-    unroll: int = DEFAULT_UNROLL,
+    unroll: int | None = None,
 ) -> Array:
     """Waits in queue for one replication of a FIFO single-server queue.
 
@@ -81,7 +89,8 @@ def lindley(
         services: shape ``(n,)`` service times.
         tau: smoothing temperature; 0 is exact.
         straight_through: exact forward pass with smoothed gradients.
-        unroll: event steps fused per scan iteration (performance only).
+        unroll: event steps fused per scan iteration (performance only); ``None`` picks
+            a backend-appropriate default (see :func:`resolve_unroll`).
     """
     w0 = jnp.zeros((), dtype=services.dtype)
 
@@ -90,7 +99,9 @@ def lindley(
         w_next = smooth_relu(w + s - a_next, tau, straight_through=straight_through)
         return w_next, w_next
 
-    _, ws = jax.lax.scan(step, w0, (services[:-1], interarrivals[1:]), unroll=unroll)
+    _, ws = jax.lax.scan(
+        step, w0, (services[:-1], interarrivals[1:]), unroll=resolve_unroll(unroll)
+    )
     return jnp.concatenate([w0[None], ws])
 
 
@@ -101,7 +112,7 @@ def kiefer_wolfowitz(
     tau: ArrayLike = 0.0,
     *,
     straight_through: bool = False,
-    unroll: int = DEFAULT_UNROLL,
+    unroll: int | None = None,
 ) -> Array:
     """Waits in queue for one replication of a FIFO queue with ``servers`` identical servers.
 
@@ -121,7 +132,7 @@ def kiefer_wolfowitz(
         v = smooth_relu(v - a_next, tau, straight_through=straight_through)
         return v, w
 
-    _, ws = jax.lax.scan(step, v0, (services, gaps), unroll=unroll)
+    _, ws = jax.lax.scan(step, v0, (services, gaps), unroll=resolve_unroll(unroll))
     return ws
 
 
@@ -135,7 +146,7 @@ def simulate_ggc(
     replications: int = 1,
     tau: ArrayLike = 0.0,
     straight_through: bool = False,
-    unroll: int = DEFAULT_UNROLL,
+    unroll: int | None = None,
 ) -> QueueSample:
     """Simulate ``replications`` independent runs of a G/G/c FIFO queue.
 
@@ -167,7 +178,7 @@ def simulate_gg1(
     replications: int = 1,
     tau: ArrayLike = 0.0,
     straight_through: bool = False,
-    unroll: int = DEFAULT_UNROLL,
+    unroll: int | None = None,
 ) -> QueueSample:
     """Simulate ``replications`` independent runs of a G/G/1 FIFO queue."""
     return simulate_ggc(
